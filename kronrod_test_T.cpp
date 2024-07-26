@@ -7,6 +7,8 @@ using namespace std;
 
 # include "kronrodT.hpp"
 
+// update text to check that there a zero for the final element of x
+
 int main ( );
 void test01 ( );
 void test02 ( );

@@ -12,6 +12,18 @@
 #include <numeric>
 #include <string>
 #include <sstream>
+#include <algorithm>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <filesystem>
+namespace fs = std::filesystem;
+
+int njobs = 20;
+std::atomic<int> RemainingThreads(njobs); // Atomic counter to keep track of completed threads
+std::mutex mtx;
+std::condition_variable cv;
 
 using namespace boost::multiprecision;
 using FloatingPointType = cpp_dec_float_50;
@@ -50,14 +62,19 @@ void compute_kronrod_mp(int n, FloatingPointType tol){
     auto [x, wk, wg] = kronrod<FloatingPointType>(n, tol);
 
     std::ofstream myfile;
-    myfile.open(std::to_string(n)+"_mp.txt");
+    std::string filename = "../kronrod/"+std::to_string(n)+"_mp.txt";
+    // if (fs::exists(filename))
+        // std::cout << "File already exists for n = " << n << std::endl; 
+        // return;
+
+    myfile.open(filename);
     
     std::vector<std::string> v;
     
     std::string s;
 
     // write the abscissas and weights to a file
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < x.size(); i++) {
         v.clear();
         std::stringstream ss;
         ss << std::setprecision(20) << x[i] << " " << wk[i] << " " << wg[i];
@@ -68,6 +85,24 @@ void compute_kronrod_mp(int n, FloatingPointType tol){
     }
 
     myfile.close(); 
+}
+
+template <typename FloatingPointType>
+void compute_points_mp(std::vector<int> Ns, FloatingPointType tol){
+
+    
+    for (int n : Ns){
+        std::cout << "Computing Kronrod points for n = " << n << std::endl;
+        compute_kronrod_mp<FloatingPointType>(n, tol);
+    }
+
+    RemainingThreads--;
+
+    if (RemainingThreads == 0) {
+        std::unique_lock<std::mutex> lck(mtx);
+        std::cout << "All threads completed" << std::endl;
+        cv.notify_one();
+    }
 }
 
 int main() {
@@ -88,9 +123,38 @@ int main() {
             //  std::cout << x1[i] << " " << w11[i] << " " << w21[i]  << "\n\n"<< std::endl;
         }
 
-        compute_kronrod(2701, 10e-10);
-        compute_kronrod_mp<FloatingPointType>(500, eps);
+        // compute_kronrod(2701, 10e-10);
+        compute_kronrod_mp<FloatingPointType>(99, eps);
 
+        // return 0;    
+        int limit = 12000;
+        std::vector<std::vector<int>> jobs(njobs);
+
+        int thread_no = 0;
+        for (int i = 2; i < 1000;i+=1) {
+            std::cout << thread_no << std::endl;
+            jobs[thread_no % njobs].push_back(i);
+            thread_no++;
+        }
+        for (int i = 1050; i < limit;i+=50) {
+            std::cout << thread_no << std::endl;
+            jobs[thread_no % njobs].push_back(i);
+            thread_no++;
+        }
+
+        std::vector<std::thread> threads;
+        for (int i = 0; i < njobs; i++) {
+            threads.push_back(std::thread(compute_points_mp<FloatingPointType>, jobs[i], eps));
+        }
+
+        for (int i = 0; i < njobs; i++) {
+            threads[i].detach();
+        }
+
+        {
+        std::unique_lock<std::mutex> lock(mtx);
+            cv.wait(lock, []{ return RemainingThreads == 0; });
+        }
 
 
     }

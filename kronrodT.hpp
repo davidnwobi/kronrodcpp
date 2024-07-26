@@ -621,6 +621,7 @@ std::tuple<std::vector<FloatingPoint>, std::vector<FloatingPoint>, std::vector<F
     FloatingPoint w1n;
     std::tie(xx, w1n) = abwe1<FloatingPoint>(N, eps, coef2, even, b, xx);
 
+    w1[N] = w1n;
     w2[N] = 0.0;
     x[N] = xx;
   }
